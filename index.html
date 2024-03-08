@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>动态显示系统信息</title>
+    <style>
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            background-color: #f9f9f9;
+            padding: 63px;
+            width: 300px;
+            margin: 10px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .progress-bar-container {
+            position: relative;
+            margin-bottom: 10px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #ddd;
+            border-radius: 10px;
+            position: relative;
+        }
+
+        .progress {
+            height: 100%;
+            border-radius: 10px;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .progress-info {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            right: -58px;
+            color: black;
+        }
+
+        .used-info {
+            position: absolute;
+            top: 50%;
+            left: 5px;
+            transform: translateY(-50%);
+            color: black;
+            font-size: 12px;
+        }
+        .boot-time {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+        }
+
+        .runtime {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+</div>
+
+<script>
+    const urls = [
+        'http://hk.vpnapi.link:2086/api/sys',
+        // 在这里添加新的URL
+    ];
+    // 存储每个请求对应的容器ID及数据
+    const requestContainers = {};
+
+    function updateSystemInfo(data, containerId) {
+        const container = document.getElementById(containerId);
+
+        const memoryProgress = container.querySelector('.memory-progress');
+        const swapProgress = container.querySelector('.swap-progress');
+        const diskData = container.querySelector('.disk-data');
+
+        const memoryPercent = (data.memory.used_percent / 100).toFixed(2);
+        const swapPercent = (data.swap.used_percent / 100).toFixed(2);
+
+        updateProgress(memoryProgress, memoryPercent);
+        updateProgress(swapProgress, swapPercent);
+
+        updateProgressInfo(memoryProgress, memoryPercent, data.memory.used, data.memory.total);
+        updateProgressInfo(swapProgress, swapPercent, data.swap.used, data.swap.total);
+
+        updateUsedInfo(memoryProgress.querySelector('.used-info'), data.memory.used, data.memory.total);
+        updateUsedInfo(swapProgress.querySelector('.used-info'), data.swap.used, data.swap.total);
+
+        diskData.innerHTML = '';
+
+        data.disk.forEach(disk => {
+            const diskCard = document.createElement('div');
+            diskCard.classList.add('data');
+
+            const diskLabel = document.createElement('span');
+            diskLabel.textContent = `${disk.mount_point} 使用：`;
+            diskCard.appendChild(diskLabel);
+
+            const progressBarContainer = document.createElement('div');
+            progressBarContainer.classList.add('progress-bar-container');
+
+            const progressBar = document.createElement('div');
+            progressBar.classList.add('progress-bar');
+
+            const progress = document.createElement('div');
+            progress.classList.add('progress');
+            progressBar.appendChild(progress);
+
+            const progressInfo = document.createElement('div');
+            progressInfo.classList.add('progress-info');
+            progressBar.appendChild(progressInfo);
+
+            const usedInfo = document.createElement('div');
+            usedInfo.classList.add('used-info');
+            progressBar.appendChild(usedInfo);
+
+            progressBarContainer.appendChild(progressBar);
+            diskCard.appendChild(progressBarContainer);
+            diskData.appendChild(diskCard);
+
+            const diskPercent = (disk.used_percent / 100).toFixed(2);
+
+            updateProgress(progressBar, diskPercent);
+
+            updateProgressInfo(progressBar, diskPercent, disk.used, disk.total);
+
+            updateUsedInfo(usedInfo, disk.used, disk.total);
+        });
+    }
+
+    function updateProgress(progressBar, percent) {
+        const progress = progressBar.querySelector('.progress');
+        progress.style.width = (percent * 100) + '%';
+
+        if (percent < 0.6) {
+            progress.style.backgroundColor = '#4caf50'; // Green
+        } else if (percent >= 0.6 && percent < 0.8) {
+            progress.style.backgroundColor = '#f65858'; // Orange
+        } else {
+            progress.style.backgroundColor = '#ff1300'; // Red
+        }
+
+        progress.style.transition = 'width 0.5s ease-in-out';
+    }
+
+    function updateProgressInfo(progressBar, percent, used, total) {
+        const progressInfo = progressBar.querySelector('.progress-info');
+        progressInfo.textContent = `${(percent * 100).toFixed(2)}%`;
+
+        const remainingInfo = convertToGB(total - used);
+        progressBar.querySelector('.used-info').textContent = `${convertToGB(used)} / ${remainingInfo}`;
+    }
+
+    function updateUsedInfo(usedInfoElement, used, total) {
+        usedInfoElement.textContent = `${convertToGB(used)} / ${convertToGB(total)}`;
+    }
+
+    function convertToGB(bytes) {
+        const gb = bytes / (1024 * 1024 * 1024);
+        if (gb >= 1) {
+            return gb.toFixed(2) + 'GB';
+        } else {
+            return (bytes / (1024 * 1024)).toFixed(2) + 'MB';
+        }
+    }
+    // 根据 CPU 使用率获取对应的进度条颜色
+    function getColor(usage) {
+        if (usage < 60) {
+            return '#4caf50'; // 绿色
+        } else if (usage < 80) {
+            return '#f65858'; // 橙色
+        } else {
+            return '#ff1300'; // 红色
+        }
+    }
+    // 更新 CPU 使用率进度条
+    function updateCPUUsage(apiUrl, containerId, usage) {
+        const progressBar = document.getElementById(containerId).querySelector('.cpu-usage .progress-bar');
+        const progressInfo = document.getElementById(containerId).querySelector('.cpu-usage .progress-info');
+
+        progressBar.style.width = `${usage.toFixed(2)}%`;
+        progressBar.style.backgroundColor = getColor(usage);
+        progressInfo.textContent = `${usage.toFixed(2)}%`;
+    }
+    function createAndPopulateCard(apiUrl) {
+        fetch(apiUrl)
+            .then(response => response.json())
+            .then(data => {
+                const containerId = apiUrl.replace(/\W/g, '');
+                requestContainers[apiUrl] = { containerId: containerId, data: [data] }; // 存储请求对应的容器ID和数据
+                const container = document.createElement('div');
+                container.id = containerId;
+                container.classList.add('card');
+
+                const header = document.createElement('div');
+                header.classList.add('header');
+                header.innerHTML = `<h2>${data.kernel.platform} (${data.kernel.sysstructure})</h2>`;
+                container.appendChild(header);
+                // 显示 CPU 使用率进度条
+                const cpuUsageData = document.createElement('div');
+                cpuUsageData.classList.add('cpu-usage');
+                cpuUsageData.innerHTML = `<span>CPU 使用率：</span>
+                                            <div class="progress-bar-container">
+                                                <div class="progress-bar"></div>
+                                                <div class="progress-info"></div>
+                                            </div>`;
+                container.appendChild(cpuUsageData);
+
+                const memoryData = document.createElement('div');
+                memoryData.classList.add('data');
+                const memoryLabel = document.createElement('span');
+                memoryLabel.textContent = '内存：';
+                memoryData.appendChild(memoryLabel);
+                memoryData.classList.add('memory-progress');
+                const memoryProgressBarContainer = document.createElement('div');
+                memoryProgressBarContainer.classList.add('progress-bar-container');
+                const memoryProgressBar = document.createElement('div');
+                memoryProgressBar.classList.add('progress-bar');
+                const memoryProgress = document.createElement('div');
+                memoryProgress.classList.add('progress');
+                memoryProgressBar.appendChild(memoryProgress);
+                const memoryProgressInfo = document.createElement('div');
+                memoryProgressInfo.classList.add('progress-info');
+                memoryProgressBar.appendChild(memoryProgressInfo);
+                const memoryUsedInfo = document.createElement('div');
+                memoryUsedInfo.classList.add('used-info');
+                memoryProgressBar.appendChild(memoryUsedInfo);
+                memoryProgressBarContainer.appendChild(memoryProgressBar);
+                memoryData.appendChild(memoryProgressBarContainer);
+                container.appendChild(memoryData);
+
+                const swapData = document.createElement('div');
+                swapData.classList.add('data');
+                const swapLabel = document.createElement('span');
+                swapLabel.textContent = '交换分区：';
+                swapData.appendChild(swapLabel);
+                swapData.classList.add('swap-progress');
+                const swapProgressBarContainer = document.createElement('div');
+                swapProgressBarContainer.classList.add('progress-bar-container');
+                const swapProgressBar = document.createElement('div');
+                swapProgressBar.classList.add('progress-bar');
+                const swapProgress = document.createElement('div');
+                swapProgress.classList.add('progress');
+                swapProgressBar.appendChild(swapProgress);
+                const swapProgressInfo = document.createElement('div');
+                swapProgressInfo.classList.add('progress-info');
+                swapProgressBar.appendChild(swapProgressInfo);
+                const swapUsedInfo = document.createElement('div');
+                swapUsedInfo.classList.add('used-info');
+                swapProgressBar.appendChild(swapUsedInfo);
+                swapProgressBarContainer.appendChild(swapProgressBar);
+                swapData.appendChild(swapProgressBarContainer);
+                container.appendChild(swapData);
+
+                const diskData = document.createElement('div');
+                diskData.classList.add('disk-data');
+                container.appendChild(diskData);
+
+                document.querySelector('.container').appendChild(container);
+
+                updateSystemInfo(data, containerId);
+            })
+            .catch(error => console.error('获取系统信息出错:', error));
+    }
+
+    // 初始化时创建卡片
+    urls.forEach(url => createAndPopulateCard(url));
+
+    // 定时更新数据
+    setInterval(function() {
+        urls.forEach(url => updateData(url));
+    }, 1000); // 更新间隔为1秒
+
+    function updateData(apiUrl) {
+        fetch(apiUrl)
+            .then(response => response.json())
+            .then(data => {
+                const containerId = requestContainers[apiUrl].containerId;
+                const storedData = requestContainers[apiUrl].data;
+
+                if (storedData.length >= 3) {
+                    storedData.shift(); // 移除最早的数据
+                }
+
+                storedData.push(data); // 存储新的数据
+                requestContainers[apiUrl].data = storedData;
+                // 更新 CPU 使用率
+                updateCPUUsage(apiUrl, containerId, data.cpu.total_usage);
+                // 更新请求次数
+                requestContainers[apiUrl].requestCount++;
+
+                updateSystemInfo(data, containerId);
+            })
+            .catch(error => console.error('获取系统信息出错:', error));
+    }
+</script>
+</body>
+</html>
